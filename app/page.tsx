@@ -65,7 +65,7 @@ function Interview({ id }: { id: string }) {
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
     if (s?.status !== "running" || busy) return;
-    const t = setInterval(refresh, 1500);
+    const t = setInterval(refresh, 500);
     return () => clearInterval(t);
   }, [s?.status, busy, refresh]);
 

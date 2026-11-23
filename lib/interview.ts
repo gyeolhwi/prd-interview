@@ -8,10 +8,9 @@ import {
 } from "./engine.ts";
 
 const DATA = path.join(process.cwd(), "data");
-// Survive Next dev hot reloads: one runner per session, one waiting answer per session.
-const g = globalThis as unknown as { live?: Set<string>; waiters?: Map<string, (a: string) => void> };
+// Survive Next dev hot reloads: one runner per session.
+const g = globalThis as unknown as { live?: Set<string> };
 const live = (g.live ??= new Set());
-const waiters = (g.waiters ??= new Map());
 
 const SYSTEM =
   "너는 비전문가가 아이디어를 요구사항으로 정리하도록 돕는 인터뷰어다. 항상 쉬운 한국어로 말하고, 전문 용어(기능, 범위, KPI 등)를 피한다.";
@@ -58,9 +57,7 @@ export async function answer(id: string, text: string) {
   record(s, text);
   s.status = "running";
   await save(s);
-  const w = waiters.get(id);
-  if (w) w(text); // live relay: hand the answer back to the waiting ask()
-  else void run(id); // no live relay (server restarted): resume
+  void run(id);
 }
 
 function record(s: Session, text: string) {
@@ -73,17 +70,13 @@ function record(s: Session, text: string) {
 async function run(id: string) {
   if (live.has(id)) return;
   live.add(id);
-  let s = await load(id);
+  const s = await load(id);
   try {
     while (s.stage <= CONFIRM) {
       await score(s);
       await save(s);
       const target = nextTarget(s);
-      if (target) {
-        await ask(s, target);
-        s = await load(id); // ask() saved the answer
-        continue;
-      }
+      if (target) return await ask(s, target); // saved as "waiting"; answer() runs the next round
       s.stage++;
       await save(s);
     }
@@ -101,9 +94,15 @@ async function run(id: string) {
   }
 }
 
-async function structured<T>(prompt: string, schema: Record<string, unknown>): Promise<T> {
-  for await (const m of query({ prompt, options: { ...base, tools: [], outputFormat: { type: "json_schema", schema } } })) {
+async function structured<T>(label: string, prompt: string, schema: Record<string, unknown>): Promise<T> {
+  const t = Date.now();
+  const q = query({ prompt, options: { ...base, tools: [], outputFormat: { type: "json_schema", schema } } });
+  // Manual iteration: `for await` + return would wait ~0.8s for the CLI process to exit; close it in the background.
+  for (let r = await q.next(); !r.done; r = await q.next()) {
+    const m = r.value;
     if (m.type === "result") {
+      q.return(undefined).catch(() => {});
+      console.log(`[interview] ${label} ${Date.now() - t}ms`);
       if (m.subtype !== "success") throw new Error(`Claude 호출 실패: ${m.subtype}`);
       return m.structured_output as T;
     }
@@ -118,6 +117,7 @@ async function score(s: Session) {
   const upto = Math.min(s.stage, CONFIRM - 1);
   const items = STAGES.slice(0, upto + 1).flatMap((st, si) => st.items.map((t, ii) => `${key(si, ii)} ${st.name}: ${t}`));
   const r = await structured<{ scores: { key: string; score: number; reason: string }[]; contradictions: string[] }>(
+    "score",
     `아래 인터뷰 내용만 근거로 각 항목이 얼마나 구체적으로 채워졌는지 0~1로 채점하라.
 0 = 정보 없음, 0.5 = 막연함, 0.8 = 개발자가 되묻지 않을 정도, 1 = 아주 구체적. 추측으로 점수를 주지 말라. reason 은 한 문장.
 ${s.stage >= CONFIRM ? "contradictions 에는 단계끼리 서로 모순되는 부분을 한 문장씩 적어라(없으면 빈 배열)." : "contradictions 는 빈 배열로 둬라."}
@@ -143,35 +143,27 @@ ${transcript(s)}`,
 async function ask(s: Session, target: string) {
   const isItem = /^\d\.\d$/.test(target);
   const about = isItem ? `"${itemText(target)}" 항목을 채우기 위한 질문` : `다음 모순을 풀기 위한 질문: ${target}`;
-  const prompt = `AskUserQuestion 도구로 질문을 정확히 1개 물어라. ${about}.
+  const q = await structured<{ question: string; header: string; options: { label: string; description: string }[] }>(
+    "ask",
+    `질문을 정확히 1개 만들어라. ${about}.
 - 이미 답한 내용은 다시 묻지 말고, 비전문가가 바로 고를 수 있게 짧고 쉽게 묻는다.
-- 선택지는 이 아이디어에 맞춘 구체적인 예시 2~3개. "잘 모르겠어요"와 "기타"는 넣지 마라(화면이 자동으로 붙인다).
-- multiSelect 는 false. header 는 12자 이내.
-- 답을 받으면 아무 말 없이 "완료"라고만 하고 끝내라.
+- options 는 이 아이디어에 맞춘 구체적인 예시 2~3개(label 은 짧은 답, description 은 한 줄 설명). "잘 모르겠어요"와 "기타"는 넣지 마라(화면이 자동으로 붙인다).
+- header 는 12자 이내.
 
 [지금까지의 인터뷰]
-${transcript(s)}`;
-
-  let asked = false;
-  for await (const m of query({
-    prompt,
-    options: {
-      ...base, tools: ["AskUserQuestion"], permissionMode: "default", maxTurns: 3,
-      canUseTool: async (name, input, { signal }) => {
-        if (name !== "AskUserQuestion") return { behavior: "deny", message: "이 도구는 쓸 수 없습니다." };
-        asked = true;
-        const q = (input as { questions: { question: string; header: string; options: { label: string; description: string }[] }[] }).questions[0];
-        s.pending = { target, question: q.question, header: q.header, options: [...q.options.slice(0, 3), { label: UNKNOWN, description: "남은 질문으로 넘겨요" }] };
-        s.status = "waiting";
-        await save(s);
-        const text = await new Promise<string>((resolve, reject) => {
-          waiters.set(s.id, resolve);
-          signal.addEventListener("abort", () => reject(new Error("질문이 취소되었습니다")));
-        }).finally(() => waiters.delete(s.id)); // answer() already recorded and saved it
-        return { behavior: "allow", updatedInput: { ...input, answers: { [q.question]: text } } };
+${transcript(s)}`,
+    {
+      type: "object", required: ["question", "header", "options"],
+      properties: {
+        question: { type: "string" },
+        header: { type: "string" },
+        options: { type: "array", minItems: 2, maxItems: 3, items: { type: "object", required: ["label", "description"], properties: { label: { type: "string" }, description: { type: "string" } } } },
       },
     },
-  })) if (m.type === "result" && !asked) throw new Error(`질문을 만들지 못했습니다: ${m.subtype}`);
+  );
+  s.pending = { target, question: q.question, header: q.header, options: [...q.options.slice(0, 3), { label: UNKNOWN, description: "남은 질문으로 넘겨요" }] };
+  s.status = "waiting";
+  await save(s);
 }
 
 const DOC_SCHEMA = {
@@ -186,6 +178,7 @@ const DOC_SCHEMA = {
 
 async function writeDoc(s: Session, edit?: string): Promise<DocParts> {
   return structured<DocParts>(
+    "writeDoc",
     `인터뷰 내용으로 Pre-PRD 본문을 써라. 인터뷰에 없는 내용은 지어내지 말라.
 - title: 제품 이름(짧게, "Pre-PRD"는 붙이지 말 것)
 - summary: 한 줄 요약
