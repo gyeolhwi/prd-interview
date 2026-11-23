@@ -49,11 +49,13 @@ function Home() {
             </label>
           ))}
         </fieldset>
-        <label htmlFor="idea">{KIND_COPY[kind].label}</label>
-        <textarea id="idea" rows={3} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder={KIND_COPY[kind].placeholder} style={{ marginTop: 8 }} />
-        <div className="row actions">
-          <button className="primary" disabled={busy || !idea.trim()} onClick={start}>질문 시작</button>
-          {err && <span role="alert" className="error">{err}</span>}
+        <label htmlFor="idea" className="field-label">{KIND_COPY[kind].label}</label>
+        <div className="composer">
+          <textarea id="idea" rows={5} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder={KIND_COPY[kind].placeholder} />
+          <div className="composer-foot">
+            {err ? <span role="alert" className="error">{err}</span> : <span className="muted">한두 줄이면 충분해요</span>}
+            <button className="primary" disabled={busy || !idea.trim()} onClick={start}>질문 시작</button>
+          </div>
         </div>
       </div>
       {list.length > 0 && (
