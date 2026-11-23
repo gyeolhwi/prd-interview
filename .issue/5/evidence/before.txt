@@ -1,0 +1,23 @@
+[interview] score 3380ms
+[interview] ask 4378ms
+first question: 7831 ms — 지금은 이웃들과 함께 물건을 살 때 주로 어떻게 사람을 모으고 있나요?
+[interview] score 3597ms
+[interview] ask 3749ms
+answer 1 ("단톡방에서 모아요") → next question: 7369 ms (stage 0)
+[interview] score 3837ms
+[interview] ask 3299ms
+answer 2 ("글이 금방 묻혀요") → next question: 7222 ms (stage 0)
+[interview] score 4079ms
+[interview] ask 3766ms
+answer 3 ("공구를 여는 사람") → next question: 7936 ms (stage 0)
+[interview] score 3821ms
+[interview] score 6144ms
+[interview] ask 3675ms
+answer 4 ("같은 글을 계속 올려요") → next question: 13655 ms (stage 1)
+[interview] score 5331ms
+[interview] ask 3957ms
+answer 5 ("집에서 틈날 때") → next question: 9349 ms (stage 1)
+[interview] score 5635ms
+[interview] ask 3466ms
+answer 6 ("아이 키우는 엄마") → next question: 9151 ms (stage 1)
+median answer→next question: 7936 ms, max 13655 ms, over 1s: 6/6

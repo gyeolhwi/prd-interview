@@ -1,0 +1,20 @@
+## think 5000ms (사람이 읽는 시간)
+[interview] prepare 13294ms
+first question: 13328 ms — 이 앱을 가장 필요로 할 사람은 누구인가요?
+answer 1 ("혼자 사는 사람") → next question: 1 ms (stage 0)
+answer 2 ("단체 채팅방") → next question: 4 ms (stage 0)
+[interview] prepare 11636ms
+answer 3 ("챙길 게 너무 많음") → next question: 4 ms (stage 0)
+[interview] score 3840ms
+[interview] score 4036ms
+answer 4 ("양이 너무 많을 때") → next question: 8 ms (stage 1)
+answer 5 ("아파트 단지 주부") → next question: 5 ms (stage 1)
+answer 6 ("틈날 때 수시로") → next question: 5 ms (stage 1)
+[interview] prepare 13373ms
+answer 7 ("공구 여는 사람") → next question: 3 ms (stage 1)
+[interview] score 5296ms
+answer 8 ("단톡방에서 모은다") → next question: 5 ms (stage 2)
+[interview] score 5109ms
+answer 9 ("모집 글 구경") → next question: 3 ms (stage 2)
+answer 10 ("딱 필요한 만큼") → next question: 3 ms (stage 2)
+median answer→next question: 4 ms, max 8 ms, over 1s: 0/10
