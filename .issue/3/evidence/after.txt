@@ -1,0 +1,13 @@
+[interview] score 3333ms
+[interview] ask 4248ms
+first question: 7625 ms — 지금은 이웃끼리 같이 사고 싶을 때 주로 어떻게 사람을 모으고 있나요?
+[interview] score 3283ms
+[interview] ask 3939ms
+answer 1 ("단톡방에서 모아요") → next question: 7321 ms (stage 0)
+[interview] score 3995ms
+[interview] ask 3711ms
+answer 2 ("글이 금방 묻혀요") → next question: 7726 ms (stage 0)
+[interview] score 3716ms
+[interview] ask 5289ms
+answer 3 ("공구를 여는 사람") → next question: 9046 ms (stage 0)
+median answer→next question: 7726 ms
