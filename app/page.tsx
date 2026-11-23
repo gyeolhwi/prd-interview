@@ -1,9 +1,14 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { CONFIRM, PASS, STAGES, UNKNOWN, key, remaining, stageAvg, type Session } from "@/lib/engine.ts";
+import { KIND_LABEL, PASS, UNKNOWN, confirmOf, key, remaining, stageAvg, stagesOf, type Kind, type Session } from "@/lib/engine.ts";
 
 type View = Session & { markdown: string };
-type Summary = Pick<Session, "id" | "idea" | "status" | "stage">;
+type Summary = Pick<Session, "id" | "kind" | "idea" | "status" | "stage">;
+
+const KIND_COPY: Record<Kind, { label: string; hint: string; placeholder: string }> = {
+  new: { label: "어떤 걸 만들고 싶으세요?", hint: "처음 만드는 서비스나 기능", placeholder: "예: 동네 중고거래 앱 만들고 싶어" },
+  maintenance: { label: "무엇을 바꾸고 싶으세요?", hint: "이미 있는 서비스를 고치거나 바꾸는 요청", placeholder: "예: 주문 목록에서 취소한 주문도 보이게 해 주세요" },
+};
 
 async function call(url: string, body?: object) {
   const r = await fetch(url, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
@@ -20,21 +25,31 @@ export default function Page() {
 
 function Home() {
   const [idea, setIdea] = useState("");
+  const [kind, setKind] = useState<Kind>("new");
   const [list, setList] = useState<Summary[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   useEffect(() => { call("/api/sessions").then(setList).catch((e) => setErr(e.message)); }, []);
   const start = async () => {
     setBusy(true);
-    try { location.href = `/?id=${(await call("/api/sessions", { idea })).id}`; } catch (e) { setErr((e as Error).message); setBusy(false); }
+    try { location.href = `/?id=${(await call("/api/sessions", { idea, kind })).id}`; } catch (e) { setErr((e as Error).message); setBusy(false); }
   };
   return (
     <>
       <h1>prd-interview</h1>
-      <p className="muted">아이디어를 한두 줄 적으면, 쉬운 질문으로 Pre-PRD 한 장을 만들어 드려요.</p>
+      <p className="muted">한두 줄 적으면, 쉬운 질문으로 Pre-PRD 한 장을 만들어 드려요.</p>
       <div className="card">
-        <label htmlFor="idea">어떤 걸 만들고 싶으세요?</label>
-        <textarea id="idea" rows={3} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="예: 동네 중고거래 앱 만들고 싶어" />
+        <fieldset className="row" style={{ border: 0, padding: 0, margin: "0 0 12px" }}>
+          <legend style={{ marginBottom: 8 }}>문서 종류</legend>
+          {(Object.keys(KIND_COPY) as Kind[]).map((k) => (
+            <label key={k} className="option" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} />
+              <span><strong>{KIND_LABEL[k]}</strong> <span className="muted">— {KIND_COPY[k].hint}</span></span>
+            </label>
+          ))}
+        </fieldset>
+        <label htmlFor="idea">{KIND_COPY[kind].label}</label>
+        <textarea id="idea" rows={3} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder={KIND_COPY[kind].placeholder} />
         <div className="row" style={{ marginTop: 12 }}>
           <button className="primary" disabled={busy || !idea.trim()} onClick={start}>시작하기</button>
           {err && <span role="alert" style={{ color: "var(--warn)" }}>{err}</span>}
@@ -46,7 +61,7 @@ function Home() {
           {list.map((s) => (
             <div key={s.id} className="item">
               <a href={`/?id=${s.id}`}>{s.idea}</a>{" "}
-              <span className="muted">· {s.status === "done" ? "완료" : `${STAGES[Math.min(s.stage, CONFIRM)].name} 단계`}</span>
+              <span className="muted">· {KIND_LABEL[s.kind ?? "new"]} · {s.status === "done" ? "완료" : `${stagesOf(s)[Math.min(s.stage, confirmOf(s))].name} 단계`}</span>
             </div>
           ))}
         </div>
@@ -76,7 +91,8 @@ function Interview({ id }: { id: string }) {
   };
 
   if (!s) return <p className="muted">{err || "불러오는 중…"}</p>;
-  const stage = Math.min(s.stage, CONFIRM);
+  const STAGES = stagesOf(s), C = confirmOf(s);
+  const stage = Math.min(s.stage, C);
   const avg = stageAvg(s, stage);
   const rem = remaining(s);
 
@@ -94,7 +110,7 @@ function Interview({ id }: { id: string }) {
         ))}
       </div>
 
-      {s.stage <= CONFIRM && (
+      {s.stage <= C && (
         <div className="card">
           <div className="row" style={{ justifyContent: "space-between" }}>
             <strong>{STAGES[stage].name} 단계 모호도 점수</strong>

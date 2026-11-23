@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nextTarget, pick, remaining, serve, toMarkdown, confirmScores, type Session } from "./engine.ts";
+import { confirmOf, confirmScores, nextTarget, pick, remaining, serve, stagesOf, toMarkdown, type Session } from "./engine.ts";
 
 const base = (p: Partial<Session> = {}): Session => ({
   id: "t", idea: "중고거래 앱", createdAt: "2026-11-22T00:00:00Z", stage: 0,
@@ -77,4 +77,30 @@ test("serve moves into the prepared next stage (확인 included) without waiting
   serve(t);
   assert.equal(t.stage, 5);
   assert.equal(t.pending?.target, "A vs B", "provisional 확인 question served even before contradictions are rescored");
+});
+
+test("maintenance: 6 interview stages + 확인, confirm keys and stage limits follow the kind", () => {
+  const m = base({ kind: "maintenance" });
+  assert.equal(stagesOf(m).length, 7);
+  assert.equal(confirmOf(m), 6);
+  assert.equal(confirmOf(base()), 5, "sessions without a kind stay 새 아이디어");
+  assert.deepEqual(Object.keys(confirmScores({ ...m, scores: { "0.0": sc(0.9) } })), ["6.0", "6.1"]);
+  m.stage = 5; m.scores = { "5.0": sc(0.2), "5.1": sc(0.9) };
+  assert.equal(nextTarget(m), "5.0", "stage 5 is still an interview stage (잘 됐는지 어떻게 아나요?)");
+  m.stage = 6; m.contradictions = ["A vs B"];
+  assert.equal(nextTarget(m), "A vs B");
+});
+
+test("maintenance markdown uses the question-form sections and keeps the tail", () => {
+  const s = base({ kind: "maintenance", stage: 7, idea: "주문 취소 표시", qa: [{ stage: 0, target: "0.0", question: "지금은?", answer: "안 보임" }] });
+  const md = toMarkdown(s, { title: "취소 주문 표시", summary: "요약", sections: ["a", "b", "c", "d", "e", "f"], decisions: [] }, "초안");
+  const heads = md.split("\n").filter((l) => l.startsWith("#"));
+  assert.deepEqual(heads, [
+    "# 취소 주문 표시 유지보수 Pre-PRD",
+    "## 1. 무엇이 바뀌나요?", "## 2. 왜 이 기능이 필요한가요?", "## 3. 요청자는 무엇이 필요한가요?",
+    "## 4. 고객은 어떤 점이 좋아지나요?", "## 5. 이번에 안 하는 것", "## 6. 잘 됐는지 어떻게 아나요?",
+    "## 7. 확인된 결정", "## 8. 남은 질문", "## 부록: 인터뷰 원문 요약",
+  ]);
+  assert.ok(md.includes("| 시작 | 요청 | 주문 취소 표시 |"));
+  assert.ok(md.includes("| 바뀌는 것 | 지금은? | 안 보임 |"));
 });
