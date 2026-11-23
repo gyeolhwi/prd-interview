@@ -3,8 +3,8 @@ import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  CONFIRM, LOW, MAX_CONFIRM_Q, PASS, STAGES, UNKNOWN, confirmScores, itemText, key, nextTarget, serve, toMarkdown,
-  type DocParts, type Pending, type Session,
+  LOW, MAX_CONFIRM_Q, PASS, UNKNOWN, confirmOf, confirmScores, itemText, key, nextTarget, serve, stagesOf, toMarkdown,
+  type DocParts, type Kind, type Pending, type Session,
 } from "./engine.ts";
 
 const DATA = path.join(process.cwd(), "data");
@@ -47,13 +47,13 @@ function update(id: string, fn: (s: Session) => void): Promise<Session> {
 export async function list() {
   const ids = await readdir(DATA).catch(() => [] as string[]);
   const all = await Promise.all(ids.filter(validId).map((id) => load(id).catch(() => null)));
-  return all.filter((s): s is Session => !!s).map(({ id, idea, status, stage, createdAt }) => ({ id, idea, status, stage, createdAt }))
+  return all.filter((s): s is Session => !!s).map(({ id, kind, idea, status, stage, createdAt }) => ({ id, kind, idea, status, stage, createdAt }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export async function create(idea: string) {
+export async function create(idea: string, kind: Kind = "new") {
   const id = `${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 8)}`;
-  const s: Session = { id, idea, createdAt: new Date().toISOString(), stage: 0, scores: {}, contradictions: [], unknown: [], qa: [], status: "running" };
+  const s: Session = { id, kind, idea, createdAt: new Date().toISOString(), stage: 0, scores: {}, contradictions: [], unknown: [], qa: [], status: "running" };
   await save(s);
   run(id);
   return s;
@@ -105,7 +105,7 @@ async function lane(id: string, name: string, step: (id: string) => Promise<bool
 
 const active = (s: Session) => s.status === "running" || s.status === "waiting";
 // After 확인 the scoring prompt no longer changes with the stage, so stage 6 reuses stage 5's scores.
-const scoreKey = (s: Session) => `${s.qa.length}:${Math.min(s.stage, CONFIRM)}`;
+const scoreKey = (s: Session) => `${s.qa.length}:${Math.min(s.stage, confirmOf(s))}`;
 const fresh = (s: Session) => s.scoredAt === scoreKey(s);
 
 /** Score lane: keep scores current, advance finished stages, write the doc at the end. Claude calls run on a snapshot outside the save queue. */
@@ -118,11 +118,11 @@ async function scoreStep(id: string): Promise<boolean> {
     await update(id, (x) => { applyScores(x, r); x.scoredAt = at; });
     return true;
   }
-  if (s.stage <= CONFIRM && nextTarget(s) === null) {
+  if (s.stage <= confirmOf(s) && nextTarget(s) === null) {
     await update(id, (x) => { if (x.stage === s.stage) { x.stage++; serve(x); } });
     return true;
   }
-  if (s.stage > CONFIRM && s.doc && !s.pending) await update(id, (x) => { x.status = "preview"; }); // doc comes from the prep lane
+  if (s.stage > confirmOf(s) && s.doc && !s.pending) await update(id, (x) => { x.status = "preview"; }); // doc comes from the prep lane
   return false;
 }
 
@@ -130,7 +130,8 @@ async function scoreStep(id: string): Promise<boolean> {
 async function prepStep(id: string): Promise<boolean> {
   const s = await load(id);
   if (!active(s)) return false;
-  if (s.stage > CONFIRM) { // the doc needs only the transcript, so it is written while the last scoring runs
+  const C = confirmOf(s);
+  if (s.stage > C) { // the doc needs only the transcript, so it is written while the last scoring runs
     if (s.pending || s.doc) return false; // a question still on screen is answered first; answer() wakes the lanes again
     const doc = await writeDoc(s);
     await update(id, (x) => { x.doc = doc; });
@@ -141,16 +142,16 @@ async function prepStep(id: string): Promise<boolean> {
     if (x.pending) return true;
   }
   const add = (stage: number, qs: Pending[]) => update(id, (x) => { (x.prepared ??= {})[stage] ??= qs; serve(x); });
-  if (s.stage < CONFIRM && !s.prepared?.[s.stage]) return add(s.stage, await prepare(s, s.stage)).then(() => true);
-  if (s.stage + 1 < CONFIRM && !s.prepared?.[s.stage + 1]) return add(s.stage + 1, await prepare(s, s.stage + 1)).then(() => true);
-  if (s.stage === CONFIRM - 1 && !s.prepared?.[CONFIRM]) { // 확인 ahead of time: provisional contradiction check on the answers so far
-    const t: Session = structuredClone({ ...s, stage: CONFIRM });
+  if (s.stage < C && !s.prepared?.[s.stage]) return add(s.stage, await prepare(s, s.stage)).then(() => true);
+  if (s.stage + 1 < C && !s.prepared?.[s.stage + 1]) return add(s.stage + 1, await prepare(s, s.stage + 1)).then(() => true);
+  if (s.stage === C - 1 && !s.prepared?.[C]) { // 확인 ahead of time: provisional contradiction check on the answers so far
+    const t: Session = structuredClone({ ...s, stage: C });
     applyScores(t, await score(t));
     // Stage 4 is still being answered, so its items are not 확인 material yet.
-    const targets = defaultTargets(t, CONFIRM).filter((k) => !k.startsWith(`${CONFIRM - 1}.`));
-    return add(CONFIRM, await prepare(t, CONFIRM, targets)).then(() => true);
+    const targets = defaultTargets(t, C).filter((k) => !k.startsWith(`${C - 1}.`));
+    return add(C, await prepare(t, C, targets)).then(() => true);
   }
-  if (s.stage === CONFIRM && !s.prepared?.[CONFIRM] && fresh(s)) return add(CONFIRM, await prepare(s, CONFIRM)).then(() => true);
+  if (s.stage === C && !s.prepared?.[C] && fresh(s)) return add(C, await prepare(s, C)).then(() => true);
   if (!s.pending && fresh(s) && nextTarget(s)) { // prepared ran out but the stage is still open: one more about the weakest item
     const qs = await prepare(s, s.stage, [nextTarget(s)!], 1);
     await update(id, (x) => { x.prepared![s.stage].push(...qs); serve(x); });
@@ -176,18 +177,20 @@ async function structured<T>(label: string, prompt: string, schema: Record<strin
 }
 
 const transcript = (s: Session) =>
-  [`아이디어: ${s.idea}`, ...s.qa.map((q) => `[${STAGES[q.stage].name}] Q: ${q.question}\nA: ${q.answer}`)].join("\n");
+  [`${s.kind === "maintenance" ? "유지보수 요청(이미 있는 서비스를 바꾸는 일)" : "아이디어"}: ${s.idea}`,
+    ...s.qa.map((q) => `[${stagesOf(s)[q.stage].name}] Q: ${q.question}\nA: ${q.answer}`)].join("\n");
 
 type Scored = { scores: { key: string; score: number; reason: string }[]; contradictions: string[] };
 
 function score(s: Session) {
-  const upto = Math.min(s.stage, CONFIRM - 1);
-  const items = STAGES.slice(0, upto + 1).flatMap((st, si) => st.items.map((t, ii) => `${key(si, ii)} ${st.name}: ${t}`));
+  const C = confirmOf(s);
+  const upto = Math.min(s.stage, C - 1);
+  const items = stagesOf(s).slice(0, upto + 1).flatMap((st, si) => st.items.map((t, ii) => `${key(si, ii)} ${st.name}: ${t}`));
   return structured<Scored>(
     "score",
     `아래 인터뷰 내용만 근거로 각 항목이 얼마나 구체적으로 채워졌는지 0~1로 채점하라.
 0 = 정보 없음, 0.5 = 막연함, 0.8 = 개발자가 되묻지 않을 정도, 1 = 아주 구체적. 추측으로 점수를 주지 말라. reason 은 한 문장.
-${s.stage >= CONFIRM ? "contradictions 에는 단계끼리 서로 모순되는 부분을 한 문장씩 적어라(없으면 빈 배열)." : "contradictions 는 빈 배열로 둬라."}
+${s.stage >= C ? "contradictions 에는 단계끼리 서로 모순되는 부분을 한 문장씩 적어라(없으면 빈 배열)." : "contradictions 는 빈 배열로 둬라."}
 
 [항목]
 ${items.join("\n")}
@@ -205,21 +208,23 @@ ${transcript(s)}`,
 }
 
 function applyScores(s: Session, r: Scored) {
-  for (const x of r.scores) if (/^[0-4]\.\d$/.test(x.key)) s.scores[x.key] = { score: Math.max(0, Math.min(1, x.score)), reason: x.reason };
-  if (s.stage >= CONFIRM) s.contradictions = r.contradictions;
-  if (s.stage >= CONFIRM) Object.assign(s.scores, confirmScores(s));
+  const C = confirmOf(s);
+  const valid = (k: string) => { const [st, i] = k.split(".").map(Number); return st < C && i < (stagesOf(s)[st]?.items.length ?? 0); };
+  for (const x of r.scores) if (/^\d+\.\d+$/.test(x.key) && valid(x.key)) s.scores[x.key] = { score: Math.max(0, Math.min(1, x.score)), reason: x.reason };
+  if (s.stage >= C) s.contradictions = r.contradictions;
+  if (s.stage >= C) Object.assign(s.scores, confirmScores(s));
 }
 
 /** Questions for a stage in one call: per target a main question and, if per = 2, a deeper follow-up. Mains come first. */
-async function prepare(s: Session, stage: number, targets = defaultTargets(s, stage), per = stage === CONFIRM ? 1 : 2): Promise<Pending[]> {
+async function prepare(s: Session, stage: number, targets = defaultTargets(s, stage), per = stage === confirmOf(s) ? 1 : 2): Promise<Pending[]> {
   if (!targets.length) return [];
-  const label = (t: string) => (/^\d\.\d$/.test(t) ? itemText(t) : `모순 풀기: ${t}`);
+  const label = (t: string) => (/^\d\.\d$/.test(t) ? itemText(s, t) : `모순 풀기: ${t}`);
   const r = await structured<{ questions: { target: string; question: string; header: string; options: { label: string; description: string }[] }[] }>(
     "prepare",
     `아래 항목마다 질문을 ${per}개씩 만들어라.${per > 1 ? " 첫 번째는 기본 질문, 두 번째는 첫 답이 막연할 때 더 구체적으로 파고드는 후속 질문이다." : ""}
 - target 에는 항목 번호(T1, T2 …)를 그대로 적는다.
 - 이미 답한 내용은 다시 묻지 말고, 질문끼리도 겹치지 않게 한다. 비전문가가 바로 고를 수 있게 짧고 쉽게 묻는다.
-- options 는 이 아이디어에 맞춘 구체적인 예시 2~3개(label 은 짧은 답, description 은 한 줄 설명). "잘 모르겠어요"와 "기타"는 넣지 마라(화면이 자동으로 붙인다).
+- options 는 이 아이디어(또는 요청)에 맞춘 구체적인 예시 2~3개(label 은 짧은 답, description 은 한 줄 설명). "잘 모르겠어요"와 "기타"는 넣지 마라(화면이 자동으로 붙인다).
 - header 는 12자 이내.
 
 [항목]
@@ -253,40 +258,63 @@ ${transcript(s)}`,
 /** Items still worth asking: open items of an interview stage (weakest first), or contradictions + low items for 확인. */
 function defaultTargets(s: Session, stage: number): string[] {
   const sc = (k: string) => s.scores[k]?.score ?? 0;
-  if (stage === CONFIRM) {
-    const low = Object.keys(s.scores).filter((k) => Number(k.split(".")[0]) < CONFIRM && sc(k) < LOW).sort((a, b) => sc(a) - sc(b));
+  const C = confirmOf(s);
+  if (stage === C) {
+    const low = Object.keys(s.scores).filter((k) => Number(k.split(".")[0]) < C && sc(k) < LOW).sort((a, b) => sc(a) - sc(b));
     return [...s.contradictions, ...low].filter((t) => !s.unknown.includes(t)).slice(0, MAX_CONFIRM_Q);
   }
-  return STAGES[stage].items.map((_, i) => key(stage, i)).filter((k) => !s.unknown.includes(k) && sc(k) < PASS).sort((a, b) => sc(a) - sc(b));
+  return stagesOf(s)[stage].items.map((_, i) => key(stage, i)).filter((k) => !s.unknown.includes(k) && sc(k) < PASS).sort((a, b) => sc(a) - sc(b));
 }
 
-const DOC_SCHEMA = {
+const docSchema = (n: number) => ({
   type: "object", required: ["title", "summary", "sections", "decisions"],
   properties: {
     title: { type: "string" },
     summary: { type: "string" },
-    sections: { type: "array", minItems: 5, maxItems: 5, items: { type: "string" } },
+    sections: { type: "array", minItems: n, maxItems: n, items: { type: "string" } },
     decisions: { type: "array", items: { type: "object", required: ["decision", "reason"], properties: { decision: { type: "string" }, reason: { type: "string" } } } },
+  },
+});
+
+/** What to write per section, in stage order; the heading itself comes from toMarkdown(). */
+const SECTION_GUIDE: Record<Kind, { title: string; sections: string[] }> = {
+  new: {
+    title: "제품 이름",
+    sections: [
+      "문제: 불릿. 누가 겪는 불편, 지금 해결 방법, 왜 불편한지",
+      "사람: \"- **유형:** 설명\" 불릿, 마지막에 우선순위",
+      "장면: 번호 목록으로 처음부터 끝까지 흐름, 실패 순간도 포함",
+      "핵심: \"- **이것만 되면 성공:** ...\" 와 \"- **성공 판단 기준:** ...\" 불릿",
+      "경계: \"**MVP에서 하지 않을 것**\" 불릿 목록, 빈 줄, \"**제약**\" 불릿 목록",
+    ],
+  },
+  maintenance: {
+    title: "바꾸는 내용의 이름",
+    sections: [
+      "무엇이 바뀌나요?: \"- **지금까지:** ...\", \"- **앞으로:** ...\", \"- **바뀌는 곳:** ...\" 불릿",
+      "왜 이 기능이 필요한가요?: 불릿. 지금 생기는 문제, 안 바꾸면 계속되는 손해",
+      "요청자는 무엇이 필요한가요?: \"- **요청자:** ...\" 와 \"- **꼭 필요한 것:** ...\" 불릿",
+      "고객은 어떤 점이 좋아지나요?: \"- **영향받는 고객:** ...\" 와 \"- **좋아지는 점:** ...\" 불릿",
+      "이번에 안 하는 것: 안 하는 것 불릿 목록, 빈 줄, \"**제약**\" 불릿 목록",
+      "잘 됐는지 어떻게 아나요?: \"- **성공 기준:** ...\" 와 \"- **확인 방법·시점:** ...\" 불릿",
+    ],
   },
 };
 
 async function writeDoc(s: Session, edit?: string): Promise<DocParts> {
+  const g = SECTION_GUIDE[s.kind ?? "new"];
   return structured<DocParts>(
     "writeDoc",
     `인터뷰 내용으로 Pre-PRD 본문을 써라. 인터뷰에 없는 내용은 지어내지 말라.
-- title: 제품 이름(짧게, "Pre-PRD"는 붙이지 말 것)
+- title: ${g.title}(짧게, "Pre-PRD"는 붙이지 말 것)
 - summary: 한 줄 요약
-- sections: 5개 마크다운 본문(제목 줄 없이). 순서대로
-  1 문제: 불릿. 누가 겪는 불편, 지금 해결 방법, 왜 불편한지
-  2 사람: "- **유형:** 설명" 불릿, 마지막에 우선순위
-  3 장면: 번호 목록으로 처음부터 끝까지 흐름, 실패 순간도 포함
-  4 핵심: "- **이것만 되면 성공:** ..." 와 "- **성공 판단 기준:** ..." 불릿
-  5 경계: "**MVP에서 하지 않을 것**" 불릿 목록, 빈 줄, "**제약**" 불릿 목록
+- sections: ${g.sections.length}개 마크다운 본문(제목 줄 없이). 순서대로
+${g.sections.map((t, i) => `  ${i + 1} ${t}`).join("\n")}
 - decisions: 인터뷰에서 확정된 결정과 이유
 ${edit ? `\n[이전 초안]\n${JSON.stringify(s.doc)}\n\n[사용자 수정 요청 — 반영하라]\n${edit}\n` : ""}
 [인터뷰]
 ${transcript(s)}`,
-    DOC_SCHEMA,
+    docSchema(g.sections.length),
   );
 }
 
