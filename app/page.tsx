@@ -64,7 +64,7 @@ function Interview({ id }: { id: string }) {
   const refresh = useCallback(() => call(`/api/sessions/${id}`).then(setS).catch((e) => setErr(e.message)), [id]);
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
-    if (s?.status !== "running" || busy) return;
+    if ((s?.status !== "running" && s?.status !== "waiting") || busy) return; // waiting: scores keep updating in the background
     const t = setInterval(refresh, 500);
     return () => clearInterval(t);
   }, [s?.status, busy, refresh]);

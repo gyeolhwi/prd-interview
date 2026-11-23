@@ -18,7 +18,7 @@ export const CONFIRM = 5;
 
 export type Score = { score: number; reason: string };
 export type QA = { stage: number; target: string; question: string; answer: string };
-export type Pending = { target: string; question: string; header: string; options: { label: string; description: string }[] };
+export type Pending = { stage?: number; target: string; question: string; header: string; options: { label: string; description: string }[] };
 export type Status = "running" | "waiting" | "preview" | "done" | "error";
 export type Session = {
   id: string;
@@ -30,6 +30,8 @@ export type Session = {
   unknown: string[]; // targets the user answered 잘 모르겠어요
   qa: QA[];
   pending?: Pending;
+  prepared?: Record<number, Pending[]>; // questions made ahead per stage, so answering never waits on Claude
+  scoredAt?: string; // "<qa count>:<stage>" the scores were computed for
   status: Status;
   error?: string;
   doc?: DocParts;
@@ -77,6 +79,27 @@ export function nextTarget(s: Session): string | null {
   }
   if (asked >= MAX_Q || (stageAvg(s, s.stage) ?? 0) >= PASS) return null;
   return lowest(s, STAGES[s.stage].items.map((_, i) => key(s.stage, i)), PASS);
+}
+
+/** Next prepared question for the current stage, or null when the stage is done or nothing usable is prepared. */
+export function pick(s: Session): Pending | null {
+  if (s.stage > CONFIRM) return null;
+  // 확인 questions are made ahead from a provisional check, so only the count limits them here; fresh scoring can still end 확인.
+  if (s.stage === CONFIRM ? s.qa.filter((q) => q.stage === CONFIRM).length >= MAX_CONFIRM_Q : nextTarget(s) === null) return null;
+  const asked = new Set(s.qa.filter((q) => q.stage === s.stage).map((q) => q.question));
+  return (s.prepared?.[s.stage] ?? []).find((p) => !asked.has(p.question) && !s.unknown.includes(p.target)
+    && (s.stage === CONFIRM || (s.scores[p.target]?.score ?? 0) < PASS)) ?? null;
+}
+
+/** Put the next prepared question on screen without waiting on Claude: when this stage looks done and the next
+ *  stage is already prepared, move into it now (scoring catches up in the background). */
+export function serve(s: Session) {
+  s.pending ??= pick(s) ?? undefined;
+  if (!s.pending && s.stage < CONFIRM && nextTarget(s) === null && s.prepared?.[s.stage + 1]) {
+    s.stage++;
+    s.pending = pick(s) ?? undefined;
+  }
+  s.status = s.pending ? "waiting" : "running";
 }
 
 function lowest(s: Session, keys: string[], below: number): string | null {
