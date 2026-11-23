@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nextTarget, remaining, toMarkdown, confirmScores, type Session } from "./engine.ts";
+import { nextTarget, pick, remaining, serve, toMarkdown, confirmScores, type Session } from "./engine.ts";
 
 const base = (p: Partial<Session> = {}): Session => ({
   id: "t", idea: "중고거래 앱", createdAt: "2026-11-22T00:00:00Z", stage: 0,
@@ -43,4 +43,34 @@ test("markdown keeps the fixed structure", () => {
   const md = toMarkdown(s, { title: "중고", summary: "요약", sections: ["a", "b", "c", "d", "e"], decisions: [{ decision: "d", reason: "r" }] }, "초안");
   for (const h of ["# 중고 Pre-PRD", "- **모호도:**", "## 1. 문제", "## 5. 경계", "## 6. 확인된 결정", "## 7. 남은 질문", "## 부록: 인터뷰 원문 요약"]) assert.ok(md.includes(h), h);
   assert.ok(md.includes("나\\|너"));
+});
+
+test("pick serves prepared questions, skipping asked, 잘 모르겠어요 and already-passed items", () => {
+  const q = (target: string, question: string) => ({ stage: 0, target, question, header: "h", options: [] });
+  const s = base({ prepared: { 0: [q("0.0", "A"), q("0.1", "B"), q("0.2", "C"), q("0.1", "B2")] } });
+  assert.equal(pick(s)?.question, "A");
+  s.qa.push({ stage: 0, target: "0.0", question: "A", answer: "a" });
+  s.unknown.push("0.1");
+  assert.equal(pick(s)?.question, "C");
+  s.scores = { "0.0": sc(0.9), "0.1": sc(0), "0.2": sc(0.9) };
+  assert.equal(pick(s), null, "0.1 is 잘 모르겠어요 and the rest passed");
+  s.unknown = []; s.scores["0.0"] = sc(0.5);
+  assert.equal(pick(s)?.question, "B");
+  s.scores = { "0.0": sc(0.9), "0.1": sc(0.8), "0.2": sc(0.9) };
+  assert.equal(pick(s), null, "stage average passed");
+});
+
+test("serve moves into the prepared next stage without waiting for scoring, but never into 확인", () => {
+  const q = (stage: number, target: string) => ({ stage, target, question: target, header: "h", options: [] });
+  const s = base({ status: "running", scores: { "0.0": sc(0.9), "0.1": sc(0.9), "0.2": sc(0.9) }, prepared: { 0: [q(0, "0.0")] } });
+  serve(s);
+  assert.equal(s.status, "running", "next stage not prepared yet: loading");
+  s.prepared![1] = [q(1, "1.0")];
+  serve(s);
+  assert.equal(s.stage, 1);
+  assert.equal(s.pending?.target, "1.0");
+  assert.equal(s.status, "waiting");
+  const t = base({ stage: 4, status: "running", scores: { "4.0": sc(0.9), "4.1": sc(0.9) }, prepared: { 4: [], 5: [q(5, "x")] } });
+  serve(t);
+  assert.equal(t.stage, 4, "확인 needs fresh scoring (contradictions) first");
 });
