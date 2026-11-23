@@ -1,0 +1,54 @@
+[interview] score 9185ms
+[interview] prepare 17684ms
+#0 stage 0 (q stage 0) waited 17723 ms — 취소된 주문은 목록에서 어디에 보이면 좋을까요?
+#1 stage 0 (q stage 0) waited 5 ms — 이번에 바꿀 주문 목록은 누가 보는 화면인가요?
+#2 stage 0 (q stage 0) waited 4 ms — '취소됨' 주문은 다른 주문과 어떻게 달라 보이면 좋을까요?
+[interview] score 5055ms
+#3 stage 0 (q stage 0) waited 1 ms — 주문 목록 말고 같이 바뀌어야 할 곳이 있나요?
+[interview] prepare 9800ms
+#4 stage 1 (q stage 1) waited 6 ms — 취소된 주문이 목록에 안 보여서 요즘 어떤 일이 자주 생기나요?
+[interview] score 5445ms
+#5 stage 1 (q stage 1) waited 2 ms — 이대로 두면 무엇이 계속 손해라고 느끼시나요?
+#6 stage 1 (q stage 1) waited 2 ms — 가장 최근에 이것 때문에 곤란했던 일을 하나만 떠올리면 어떤 상황이었나요?
+[interview] prepare 8592ms
+#7 stage 1 (q stage 1) waited 7 ms — 그 손해가 어느 정도인지 대략 말해 주실 수 있나요?
+#8 stage 2 (q stage 2) waited 17 ms — 이 변경은 누가 처음 부탁했나요?
+[interview] score 11132ms
+#9 stage 2 (q stage 2) waited 9 ms — 이번 변경으로 가장 해결되었으면 하는 건 뭔가요?
+#10 stage 2 (q stage 2) waited 6 ms — 이런 부탁이 어떤 일 때문에 나왔나요?
+#11 stage 2 (q stage 2) waited 4 ms — 이게 잘 됐다고 느끼려면 어떤 모습이면 될까요?
+[interview] score 8441ms
+[interview] prepare 10371ms
+#12 stage 3 (q stage 3) waited 15 ms — 취소된 주문이 보이게 되면, 어떤 고객이 이 변화를 보게 되나요?
+#13 stage 3 (q stage 3) waited 6 ms — 바뀐 뒤 고객이 가장 먼저 "좋아졌다"고 느낄 점은 무엇일까요?
+[interview] score 6970ms
+#14 stage 3 (q stage 3) waited 5 ms — 얼마나 예전에 취소한 주문까지 보여 주면 좋을까요?
+[interview] prepare 8582ms
+#15 stage 3 (q stage 3) waited 8 ms — 취소된 주문을 본 고객이 거기서 더 알 수 있어야 할 게 있나요?
+#16 stage 4 (q stage 4) waited 11 ms — 이번에는 하지 않아도 되는 일은 무엇인가요?
+[interview] score 9112ms
+#17 stage 4 (q stage 4) waited 2 ms — 언제까지 바뀌면 좋을까요?
+#18 stage 4 (q stage 4) waited 4 ms — 취소 주문 화면에서 고객이 할 수 있는 일 중 이번에 빼도 되는 건 무엇인가요?
+[interview] prepare 8384ms
+#19 stage 4 (q stage 4) waited 3 ms — 바꿀 때 절대 영향을 주면 안 되는 곳이 있나요?
+#20 stage 5 (q stage 5) waited 11 ms — 바뀐 뒤 무엇을 보면 '잘 됐다'고 할 수 있을까요?
+[interview] score 12314ms
+#21 stage 5 (q stage 5) waited 5 ms — 잘 됐는지 누가 어떻게 확인해 볼까요?
+#22 stage 5 (q stage 5) waited 7 ms — 문의가 얼마나 줄면 만족스러우실까요?
+#23 stage 5 (q stage 5) waited 4 ms — 바꾼 뒤 언제쯤 결과를 확인하면 될까요?
+[interview] score 12570ms
+[interview] score 17662ms
+[interview] prepare 7734ms
+#24 stage 6 (q stage 6) waited 13374 ms — 이미 취소된 예전 주문은 어떻게 할까요? 앞으로 취소하는 주문만 보이면, 예전 주문 때문에 오는 문의는 계속 생길 수 있어요.
+[interview] score 13897ms
+#25 stage 6 (q stage 6) waited 2 ms — 글자 표시만 있어도 고객이 취소 주문을 한눈에 알아볼 수 있을까요?
+#26 stage 6 (q stage 6) waited 5 ms — 환불 진행 상태는 고객에게 어떻게 보여 주면 될까요? 환불 처리하는 부분은 건드리지 않는 방법으로 골라 주세요.
+[interview] score 18574ms
+[interview] score 17523ms
+[interview] writeDoc 17440ms
+preview after 27 answers, 47045 ms after last answer
+status done, qa per stage {"0":4,"1":4,"2":4,"3":4,"4":4,"5":4,"6":3}, unknown 0, contradictions 2
+waits over 1s (excluding first): 13374ms
+pre-prd.md 3978 chars, headings: # 취소한 주문도 '취소됨'으로 보이게 하기 유지보수 Pre-PRD | ## 1. 무엇이 바뀌나요? | ## 2. 왜 이 기능이 필요한가요? | ## 3. 요청자는 무엇이 필요한가요? | ## 4. 고객은 어떤 점이 좋아지나요? | ## 5. 이번에 안 하는 것 | ## 6. 잘 됐는지 어떻게 아나요? | ## 7. 확인된 결정 | ## 8. 남은 질문 | ## 부록: 인터뷰 원문 요약
+kind maintenance, stages 7
+total 159 s
