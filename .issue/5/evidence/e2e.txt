@@ -1,0 +1,43 @@
+[interview] prepare 13621ms
+#0 stage 0 (q stage 0) waited 13634 ms — 이 앱을 가장 반길 사람은 누구인가요?
+#1 stage 0 (q stage 0) waited 2 ms — 지금은 이웃끼리 같이 살 사람을 어떻게 모으고 있나요?
+#2 stage 0 (q stage 0) waited 5 ms — 지금 방법에서 가장 힘든 점은 무엇인가요?
+#3 stage 0 (q stage 0) waited 2 ms — 그 사람들은 주로 어떤 물건을 살 때 아쉬워하나요?
+[interview] prepare 13091ms
+#4 stage 1 (q stage 1) waited 1122 ms — 이 앱을 제일 먼저 쓸 것 같은 사람은 누구인가요?
+#5 stage 1 (q stage 1) waited 3 ms — 사람들이 이 앱을 주로 언제 열어볼까요?
+#6 stage 1 (q stage 1) waited 5 ms — 공구를 여는 사람과 참여하는 사람 중 누구를 먼저 챙겨야 할까요?
+#7 stage 1 (q stage 1) waited 5 ms — 그 사람은 지금 공구를 어떻게 하고 있나요?
+[interview] prepare 13061ms
+#8 stage 2 (q stage 2) waited 1021 ms — 혼자 사는 사람이 앱을 켜면 맨 처음 무엇을 하게 되나요?
+#9 stage 2 (q stage 2) waited 2 ms — 공구가 잘 끝나면 혼자 사는 사람에게 가장 좋은 점은 무엇인가요?
+#10 stage 2 (q stage 2) waited 7 ms — 앱을 써도 사람이 다 안 모이면 어떻게 되면 좋을까요?
+#11 stage 2 (q stage 2) waited 6 ms — 같이 살 사람이 다 모인 뒤에는 물건을 어떻게 받나요?
+[interview] prepare 9608ms
+#12 stage 3 (q stage 3) waited 5 ms — 이 앱이 딱 한 가지만 잘한다면, 무엇이어야 할까요?
+#13 stage 3 (q stage 3) waited 4 ms — 어떤 모습을 보면 '이 앱 잘 되고 있네' 하고 느낄까요?
+[interview] score 6561ms
+#14 stage 3 (q stage 3) waited 6 ms — 공구를 여는 사람이 가장 덜어내고 싶은 번거로움은 무엇일까요?
+#15 stage 3 (q stage 3) waited 5 ms — 숫자로 본다면, 어느 정도면 성공이라고 할 수 있을까요?
+[interview] prepare 8735ms
+#16 stage 4 (q stage 4) waited 922 ms — 처음 만들 때는 빼고 가도 괜찮은 것은 무엇인가요?
+#17 stage 4 (q stage 4) waited 8 ms — 이 앱은 언제쯤 사람들이 쓸 수 있으면 좋겠나요?
+#18 stage 4 (q stage 4) waited 5 ms — 먹거리 말고 다른 물건 공구는 처음에 어떻게 할까요?
+[interview] score 8800ms
+#19 stage 4 (q stage 4) waited 1 ms — 처음에는 어떤 휴대폰에서 쓸 수 있어야 하나요?
+[interview] score 9151ms
+[interview] score 9404ms
+[interview] score 10215ms
+[interview] prepare 14063ms
+#20 stage 5 (q stage 5) waited 39584 ms — 앞에서는 '혼자 사는 사람', 뒤에서는 '아파트 사는 주부'라고 하셨어요. 이 앱은 누구를 가장 먼저 생각하고 만들까요?
+#21 stage 5 (q stage 5) waited 15 ms — 공구를 여는 사람을 먼저 챙긴다고 하셨는데, 앱을 켜면 처음 보이는 화면은 '모집 글 둘러보기'였어요. 첫 화면은 어떤 모습이 맞을까요?
+#22 stage 5 (q stage 5) waited 2 ms — '사람이 안 모인다'는 불편을 겪는 사람은 공구를 얼마나 해 본 사람인가요?
+[interview] score 10234ms
+[interview] score 12455ms
+[interview] score 11520ms
+[interview] writeDoc 19276ms
+preview after 23 answers, 47553 ms after last answer
+status done, qa per stage {"0":4,"1":4,"2":4,"3":4,"4":4,"5":3}, unknown 0, contradictions 2
+waits over 1s (excluding first): 1122ms, 1021ms, 39584ms
+pre-prd.md 4045 chars, headings: # 동네 먹거리 공구 Pre-PRD | ## 1. 문제 | ## 2. 사람 | ## 3. 장면 | ## 4. 핵심 | ## 5. 경계 | ## 6. 확인된 결정 | ## 7. 남은 질문 | ## 부록: 인터뷰 원문 요약
+total 173 s
