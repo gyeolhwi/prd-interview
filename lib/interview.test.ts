@@ -7,8 +7,8 @@ import type { Session } from "./engine.ts";
 
 test("answer() records the answer and shows the next prepared question right away", async () => {
   process.chdir(await mkdtemp(path.join(tmpdir(), "prd-")));
-  // Pretend a runner is already live so answer()'s run() returns without calling Claude.
-  (globalThis as unknown as { live?: Set<string> }).live = new Set(["s1"]);
+  // Pretend both background lanes are already live so answer()'s run() returns without calling Claude.
+  (globalThis as unknown as { live?: Set<string> }).live = new Set(["s1:score", "s1:prep"]);
   const { answer, load } = await import("./interview.ts"); // DATA is resolved from cwd at import
   const s: Session = {
     id: "s1", idea: "앱", createdAt: "2026-11-23T00:00:00Z", stage: 0, scores: {}, contradictions: [], unknown: [], qa: [],

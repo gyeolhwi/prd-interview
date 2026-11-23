@@ -83,17 +83,19 @@ export function nextTarget(s: Session): string | null {
 
 /** Next prepared question for the current stage, or null when the stage is done or nothing usable is prepared. */
 export function pick(s: Session): Pending | null {
-  if (s.stage > CONFIRM || nextTarget(s) === null) return null;
+  if (s.stage > CONFIRM) return null;
+  // 확인 questions are made ahead from a provisional check, so only the count limits them here; fresh scoring can still end 확인.
+  if (s.stage === CONFIRM ? s.qa.filter((q) => q.stage === CONFIRM).length >= MAX_CONFIRM_Q : nextTarget(s) === null) return null;
   const asked = new Set(s.qa.filter((q) => q.stage === s.stage).map((q) => q.question));
   return (s.prepared?.[s.stage] ?? []).find((p) => !asked.has(p.question) && !s.unknown.includes(p.target)
     && (s.stage === CONFIRM || (s.scores[p.target]?.score ?? 0) < PASS)) ?? null;
 }
 
 /** Put the next prepared question on screen without waiting on Claude: when this stage looks done and the next
- *  interview stage is already prepared, move into it now (scoring catches up in the background). 확인 always waits for scoring. */
+ *  stage is already prepared, move into it now (scoring catches up in the background). */
 export function serve(s: Session) {
   s.pending ??= pick(s) ?? undefined;
-  if (!s.pending && s.stage + 1 < CONFIRM && nextTarget(s) === null && s.prepared?.[s.stage + 1]) {
+  if (!s.pending && s.stage < CONFIRM && nextTarget(s) === null && s.prepared?.[s.stage + 1]) {
     s.stage++;
     s.pending = pick(s) ?? undefined;
   }

@@ -60,7 +60,7 @@ test("pick serves prepared questions, skipping asked, 잘 모르겠어요 and al
   assert.equal(pick(s), null, "stage average passed");
 });
 
-test("serve moves into the prepared next stage without waiting for scoring, but never into 확인", () => {
+test("serve moves into the prepared next stage (확인 included) without waiting for scoring", () => {
   const q = (stage: number, target: string) => ({ stage, target, question: target, header: "h", options: [] });
   const s = base({ status: "running", scores: { "0.0": sc(0.9), "0.1": sc(0.9), "0.2": sc(0.9) }, prepared: { 0: [q(0, "0.0")] } });
   serve(s);
@@ -70,7 +70,11 @@ test("serve moves into the prepared next stage without waiting for scoring, but 
   assert.equal(s.stage, 1);
   assert.equal(s.pending?.target, "1.0");
   assert.equal(s.status, "waiting");
-  const t = base({ stage: 4, status: "running", scores: { "4.0": sc(0.9), "4.1": sc(0.9) }, prepared: { 4: [], 5: [q(5, "x")] } });
+  const t = base({ stage: 4, status: "running", scores: { "4.0": sc(0.9), "4.1": sc(0.9) }, prepared: { 4: [] } });
   serve(t);
-  assert.equal(t.stage, 4, "확인 needs fresh scoring (contradictions) first");
+  assert.equal(t.stage, 4, "확인 not prepared yet: wait");
+  t.prepared![5] = [q(5, "A vs B")];
+  serve(t);
+  assert.equal(t.stage, 5);
+  assert.equal(t.pending?.target, "A vs B", "provisional 확인 question served even before contradictions are rescored");
 });

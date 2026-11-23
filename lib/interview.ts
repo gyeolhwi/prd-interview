@@ -8,9 +8,10 @@ import {
 } from "./engine.ts";
 
 const DATA = path.join(process.cwd(), "data");
-// Survive Next dev hot reloads: one background worker and one save queue per session.
-const g = globalThis as unknown as { live?: Set<string>; locks?: Map<string, Promise<unknown>> };
+// Survive Next dev hot reloads: two background lanes (score, prep) and one save queue per session.
+const g = globalThis as unknown as { live?: Set<string>; wake?: Set<string>; locks?: Map<string, Promise<unknown>> };
 const live = (g.live ??= new Set());
+const wake = (g.wake ??= new Set());
 const locks = (g.locks ??= new Map());
 
 const SYSTEM =
@@ -54,14 +55,14 @@ export async function create(idea: string) {
   const id = `${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 8)}`;
   const s: Session = { id, idea, createdAt: new Date().toISOString(), stage: 0, scores: {}, contradictions: [], unknown: [], qa: [], status: "running" };
   await save(s);
-  void run(id);
+  run(id);
   return s;
 }
 
 /** Load and, if the server restarted, resume the background worker. */
 export async function get(id: string) {
   const s = await load(id);
-  if ((s.status === "running" || s.status === "waiting") && !live.has(id)) void run(id);
+  if (active(s) && !live.has(`${id}:score`)) run(id);
   return s;
 }
 
@@ -72,7 +73,7 @@ export async function answer(id: string, text: string) {
     record(s, text);
     serve(s);
   });
-  void run(id);
+  run(id);
 }
 
 function record(s: Session, text: string) {
@@ -82,60 +83,75 @@ function record(s: Session, text: string) {
   s.pending = undefined;
 }
 
-/** Background worker: keeps scores current, advances stages, and keeps the next questions prepared. */
-async function run(id: string) {
-  if (live.has(id)) return;
-  live.add(id);
+/** Wake both background lanes. Scoring and question preparing run side by side so neither waits on the other. */
+function run(id: string) {
+  void lane(id, "score", scoreStep);
+  void lane(id, "prep", prepStep);
+}
+
+async function lane(id: string, name: string, step: (id: string) => Promise<boolean>) {
+  const k = `${id}:${name}`;
+  wake.add(k);
+  if (live.has(k)) return; // the running loop sees the wake flag and goes around once more
+  live.add(k);
   try {
-    while (await step(id));
+    while (wake.delete(k)) while (await step(id)) run(id); // progress in one lane may unblock the other
   } catch (e) {
     await update(id, (s) => { s.status = "error"; s.error = String(e instanceof Error ? e.message : e); });
   } finally {
-    live.delete(id);
+    live.delete(k);
   }
 }
 
-/** One unit of work, false when idle. Claude calls run on a snapshot outside the queue; results merge into the latest state. */
-async function step(id: string): Promise<boolean> {
+const active = (s: Session) => s.status === "running" || s.status === "waiting";
+// After 확인 the scoring prompt no longer changes with the stage, so stage 6 reuses stage 5's scores.
+const scoreKey = (s: Session) => `${s.qa.length}:${Math.min(s.stage, CONFIRM)}`;
+const fresh = (s: Session) => s.scoredAt === scoreKey(s);
+
+/** Score lane: keep scores current, advance finished stages, write the doc at the end. Claude calls run on a snapshot outside the save queue. */
+async function scoreStep(id: string): Promise<boolean> {
   const s = await load(id);
-  if (s.status !== "running" && s.status !== "waiting") return false;
-  if (!s.pending && s.prepared?.[s.stage]) { // a question may be servable right now; never make the user wait on scoring
-    const x = await update(id, serve);
-    if (x.pending) return true;
-  }
-  // Preparing questions comes before scoring: answers arrive faster than scoring, and a missing question is what the user waits on.
-  if (s.stage < CONFIRM && !s.prepared?.[s.stage]) {
-    const qs = await prepare(s, s.stage);
-    await update(id, (x) => { (x.prepared ??= {})[s.stage] ??= qs; serve(x); });
-    return true;
-  }
-  if (s.stage + 1 < CONFIRM && !s.prepared?.[s.stage + 1]) { // get the next stage ready while the user answers
-    const qs = await prepare(s, s.stage + 1);
-    await update(id, (x) => { (x.prepared ??= {})[s.stage + 1] ??= qs; });
-    return true;
-  }
-  const at = `${s.qa.length}:${s.stage}`;
-  if (s.scoredAt !== at) {
+  if (!active(s)) return false;
+  if (!fresh(s)) {
+    const at = scoreKey(s);
     const r = await score(s);
     await update(id, (x) => { applyScores(x, r); x.scoredAt = at; });
     return true;
   }
   if (s.stage <= CONFIRM && nextTarget(s) === null) {
-    await update(id, (x) => { if (x.stage === s.stage) x.stage++; });
+    await update(id, (x) => { if (x.stage === s.stage) { x.stage++; serve(x); } });
     return true;
   }
-  if (s.stage > CONFIRM) {
-    if (s.pending) return false; // let the user finish the question on screen; answer() restarts the worker
+  if (s.stage > CONFIRM && s.doc && !s.pending) await update(id, (x) => { x.status = "preview"; }); // doc comes from the prep lane
+  return false;
+}
+
+/** Prep lane: keep a question on screen and the next stage's questions ready, so answering never waits on Claude. */
+async function prepStep(id: string): Promise<boolean> {
+  const s = await load(id);
+  if (!active(s)) return false;
+  if (s.stage > CONFIRM) { // the doc needs only the transcript, so it is written while the last scoring runs
+    if (s.pending || s.doc) return false; // a question still on screen is answered first; answer() wakes the lanes again
     const doc = await writeDoc(s);
-    await update(id, (x) => { x.doc = doc; x.status = "preview"; });
-    return false;
-  }
-  if (!s.prepared?.[s.stage]) { // 확인: needs fresh scores (contradictions), so it is prepared after scoring
-    const qs = await prepare(s, s.stage);
-    await update(id, (x) => { (x.prepared ??= {})[s.stage] ??= qs; serve(x); });
+    await update(id, (x) => { x.doc = doc; });
     return true;
   }
-  if (!s.pending) { // prepared ran out but the stage is still open: one more about the weakest item
+  if (!s.pending && s.prepared?.[s.stage]) {
+    const x = await update(id, serve);
+    if (x.pending) return true;
+  }
+  const add = (stage: number, qs: Pending[]) => update(id, (x) => { (x.prepared ??= {})[stage] ??= qs; serve(x); });
+  if (s.stage < CONFIRM && !s.prepared?.[s.stage]) return add(s.stage, await prepare(s, s.stage)).then(() => true);
+  if (s.stage + 1 < CONFIRM && !s.prepared?.[s.stage + 1]) return add(s.stage + 1, await prepare(s, s.stage + 1)).then(() => true);
+  if (s.stage === CONFIRM - 1 && !s.prepared?.[CONFIRM]) { // 확인 ahead of time: provisional contradiction check on the answers so far
+    const t: Session = structuredClone({ ...s, stage: CONFIRM });
+    applyScores(t, await score(t));
+    // Stage 4 is still being answered, so its items are not 확인 material yet.
+    const targets = defaultTargets(t, CONFIRM).filter((k) => !k.startsWith(`${CONFIRM - 1}.`));
+    return add(CONFIRM, await prepare(t, CONFIRM, targets)).then(() => true);
+  }
+  if (s.stage === CONFIRM && !s.prepared?.[CONFIRM] && fresh(s)) return add(CONFIRM, await prepare(s, CONFIRM)).then(() => true);
+  if (!s.pending && fresh(s) && nextTarget(s)) { // prepared ran out but the stage is still open: one more about the weakest item
     const qs = await prepare(s, s.stage, [nextTarget(s)!], 1);
     await update(id, (x) => { x.prepared![s.stage].push(...qs); serve(x); });
     return true;
@@ -190,7 +206,7 @@ ${transcript(s)}`,
 
 function applyScores(s: Session, r: Scored) {
   for (const x of r.scores) if (/^[0-4]\.\d$/.test(x.key)) s.scores[x.key] = { score: Math.max(0, Math.min(1, x.score)), reason: x.reason };
-  s.contradictions = s.stage >= CONFIRM ? r.contradictions : [];
+  if (s.stage >= CONFIRM) s.contradictions = r.contradictions;
   if (s.stage >= CONFIRM) Object.assign(s.scores, confirmScores(s));
 }
 
