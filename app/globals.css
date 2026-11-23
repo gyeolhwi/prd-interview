@@ -100,3 +100,7 @@ a:hover { text-decoration-color: var(--ink); }
   .composer-foot { padding-left: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.prev { padding: 6px 14px; font-size: .9375rem; }
+.question > .prev { display: block; margin: 0 0 16px; }
+.picked { margin-left: 8px; padding: 0 6px; font-size: .875rem; background: var(--marker); border-radius: 4px; }

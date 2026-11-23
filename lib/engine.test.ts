@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { confirmOf, confirmScores, nextTarget, pick, remaining, serve, stagesOf, toMarkdown, type Session } from "./engine.ts";
+import { back, confirmOf, confirmScores, nextTarget, pick, remaining, serve, stagesOf, toMarkdown, type Session } from "./engine.ts";
 
 const base = (p: Partial<Session> = {}): Session => ({
   id: "t", idea: "중고거래 앱", createdAt: "2026-11-22T00:00:00Z", stage: 0,
@@ -103,4 +103,26 @@ test("maintenance markdown uses the question-form sections and keeps the tail", 
   ]);
   assert.ok(md.includes("| 시작 | 요청 | 주문 취소 표시 |"));
   assert.ok(md.includes("| 바뀌는 것 | 지금은? | 안 보임 |"));
+});
+
+test("back returns to the last question and drops what its answer decided", () => {
+  const p = (target: string, question: string) => ({ stage: Number(target[0]), target, question, header: "h", options: [{ label: "A", description: "" }] });
+  const s = base({
+    stage: 1, status: "preview", unknown: ["0.1"], contradictions: ["x"], scores: { "0.0": sc(0.9), "0.1": sc(0), "1.0": sc(0.5), "5.0": sc(0) },
+    qa: [{ stage: 0, target: "0.0", question: "q0", answer: "A" }, { stage: 0, target: "0.1", question: "q1", answer: "잘 모르겠어요" }],
+    prepared: { 0: [p("0.0", "q0"), p("0.1", "q1")], 1: [p("1.0", "q2")], 5: [p("0.1", "c")] }, pending: p("1.0", "q2"),
+  });
+  back(s);
+  assert.deepEqual([s.stage, s.status, s.pending?.question, s.qa.length, s.rev], [0, "waiting", "q1", 1, 1]);
+  assert.deepEqual([s.unknown, s.contradictions, Object.keys(s.scores)], [[], [], []]);
+  assert.equal(s.prepared?.[5], undefined);
+  back(s);
+  assert.deepEqual([s.pending?.question, s.pending?.options[0].label], ["q0", "A"]);
+  assert.deepEqual(s.undone, { q0: "A", q1: "잘 모르겠어요" });
+  assert.throws(() => back(s), /돌아갈 질문이 없습니다/);
+
+  s.qa.push({ stage: 0, target: "0.0", question: "q0", answer: "B" }); // re-answered: the next one taken back is asked again
+  s.pending = undefined;
+  serve(s);
+  assert.equal(s.pending!.question, "q1");
 });
