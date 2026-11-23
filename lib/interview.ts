@@ -52,14 +52,15 @@ export async function get(id: string) {
 }
 
 export async function answer(id: string, text: string) {
-  const w = waiters.get(id);
-  if (w) return w(text); // live relay: canUseTool records it
-  const s = await load(id); // no live relay (server restarted): record and resume
+  // Save before replying so the POST response already shows "running" (and the client resumes polling).
+  const s = await load(id);
   if (!s.pending) throw new Error("대기 중인 질문이 없습니다");
   record(s, text);
   s.status = "running";
   await save(s);
-  void run(id);
+  const w = waiters.get(id);
+  if (w) w(text); // live relay: hand the answer back to the waiting ask()
+  else void run(id); // no live relay (server restarted): resume
 }
 
 function record(s: Session, text: string) {
@@ -166,10 +167,7 @@ ${transcript(s)}`;
         const text = await new Promise<string>((resolve, reject) => {
           waiters.set(s.id, resolve);
           signal.addEventListener("abort", () => reject(new Error("질문이 취소되었습니다")));
-        }).finally(() => waiters.delete(s.id));
-        record(s, text);
-        s.status = "running";
-        await save(s);
+        }).finally(() => waiters.delete(s.id)); // answer() already recorded and saved it
         return { behavior: "allow", updatedInput: { ...input, answers: { [q.question]: text } } };
       },
     },
