@@ -110,6 +110,8 @@ function Interview({ id }: { id: string }) {
 
   return (
     <>
+      {/* Always mounted: screen readers announce changes inside a live region, not one that appears with its text. */}
+      <span role="status" className="sr-only">{pressed ? "답을 보내는 중…" : s.status === "running" ? "Claude가 다음 질문을 고르는 중…" : ""}</span>
       <a href="/" className="back">처음 화면으로</a>
       <h1>{s.idea}</h1>
       <p className="muted">답한 질문 {s.qa.length}개, data/{s.id}/ 에 저장돼요</p>
@@ -144,7 +146,7 @@ function Interview({ id }: { id: string }) {
         </section>
       )}
 
-      {s.status === "running" && <div className="status" role="status"><span className="spinner" aria-hidden="true" />Claude가 답을 살펴보고 다음 질문을 고르는 중… {backButton}</div>}
+      {s.status === "running" && <div className="status"><span className="spinner" aria-hidden="true" />Claude가 답을 살펴보고 다음 질문을 고르는 중… {backButton}</div>}
 
       {s.status === "waiting" && s.pending && (
         <div className="card question">
@@ -159,11 +161,10 @@ function Interview({ id }: { id: string }) {
           <label htmlFor="free" className="muted" style={{ display: "block", marginTop: 16 }}>직접 적기</label>
           <div className="row">
             <input id="free" type="text" value={text} onChange={(e) => setText(e.target.value)} style={{ flex: 1 }}
-              onKeyDown={(e) => e.key === "Enter" && text.trim() && !e.nativeEvent.isComposing && send("answer", text, "send")} />
+              onKeyDown={(e) => e.key === "Enter" && !busy && text.trim() && !e.nativeEvent.isComposing && send("answer", text, "send")} />
             <button className="primary" disabled={busy || !text.trim()} aria-busy={pressed === "send"} onClick={() => send("answer", text, "send")}>보내기</button>
             <button disabled={busy} aria-busy={pressed === "skip"} onClick={() => send("answer", UNKNOWN, "skip")} title="이 질문은 남은 질문으로 넘겨요">넘기기</button>
           </div>
-          <span role="status" className="sr-only">{pressed && "답을 보내는 중…"}</span>
         </div>
       )}
 
