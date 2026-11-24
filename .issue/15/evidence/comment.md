@@ -22,14 +22,14 @@
 
 ## 변경 파일
 
-- `app/page.tsx`: 누른 위치 상태(`pressed`), `aria-busy`, 상태 안내
+- `app/page.tsx`: 누른 위치 상태(`pressed`), `aria-busy`, 상태 안내, 전송 중 Enter 차단
 - `app/globals.css`: 스피너, 움직임 줄이기 설정 대응
 
 ## 검증
 
 - `tsc --noEmit` / `npm test` (11개) / `npm run build` 통과
-- 브라우저: 선택지·보내기·Enter·넘기기 각각 누른 곳에만 표시되고 끝나면 사라짐, 전송 실패 시 사라짐, `prefers-reduced-motion` 에서 정지
+- 브라우저: 선택지·보내기·Enter·넘기기 각각 누른 곳에만 표시되고 끝나면 사라짐, 전송 중 Enter 재전송 안 됨, 전송 실패 시 사라짐, `prefers-reduced-motion` 에서 정지
 
 ## 남은 이슈
 
-- 없음
+- 스크린리더 실기 확인은 하지 않음. 전송 실패 후 버튼 포커스가 풀릴 수 있는 기존 동작은 그대로임
