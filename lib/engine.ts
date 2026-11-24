@@ -52,7 +52,9 @@ export type Session = {
   qa: QA[];
   pending?: Pending;
   prepared?: Record<number, Pending[]>; // questions made ahead per stage, so answering never waits on Claude
-  scoredAt?: string; // "<qa count>:<stage>" the scores were computed for
+  scoredAt?: string; // "<rev>:<qa count>:<stage>" the scores were computed for
+  rev?: number; // +1 per back() or changed answer: background work started on an older rev is thrown away
+  undone?: Record<string, string>; // question → answer taken back, shown again when the question returns
   status: Status;
   error?: string;
   doc?: DocParts;
@@ -123,6 +125,28 @@ export function serve(s: Session) {
     s.pending = pick(s) ?? undefined;
   }
   s.status = s.pending ? "waiting" : "running";
+}
+
+/** Take back the last answer and show its question again. Everything derived from that answer is dropped. */
+export function back(s: Session) {
+  const q = s.qa.pop();
+  if (!q) throw new Error("돌아갈 질문이 없습니다");
+  (s.undone ??= {})[q.question] = q.answer;
+  if (!s.qa.some((x) => x.target === q.target && x.answer.trim() === UNKNOWN)) s.unknown = s.unknown.filter((t) => t !== q.target);
+  // Keep a still-open question from a made-ahead list: it stays in prepared and comes back after this one.
+  s.pending = s.prepared?.[q.stage]?.find((p) => p.question === q.question)
+    ?? { stage: q.stage, target: q.target, question: q.question, header: "", options: [{ label: UNKNOWN, description: "남은 질문으로 넘겨요" }] };
+  s.stage = q.stage;
+  s.status = "waiting";
+  s.rev = (s.rev ?? 0) + 1;
+  s.doc = undefined;
+  delete s.scores[q.target];
+  // One answer can score several items of its stage, so the whole stage is rescored (확인 only re-derives its own).
+  for (const k of Object.keys(s.scores)) if (Number(k.split(".")[0]) >= q.stage) delete s.scores[k];
+  if (q.stage < confirmOf(s)) { // 확인 was based on answers that may now change
+    s.contradictions = [];
+    delete s.prepared?.[confirmOf(s)];
+  }
 }
 
 function lowest(s: Session, keys: string[], below: number): string | null {

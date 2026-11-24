@@ -89,9 +89,14 @@ function Interview({ id }: { id: string }) {
     return () => clearInterval(t);
   }, [s?.status, busy, refresh]);
 
+  // Going back: an answer that was typed (not picked) returns to the input to be edited.
+  const asked = s?.pending, previous = asked && s.undone?.[asked.question];
+  const typed = previous && !asked.options.some((o) => o.label.trim() === previous) ? previous : undefined;
+  useEffect(() => { if (typed) setText(typed); }, [asked?.question, typed]);
+
   const send = async (action: string, t?: string) => {
     setBusy(true); setErr("");
-    try { setS(await call(`/api/sessions/${id}`, { action, text: t })); setText(""); } catch (e) { setErr((e as Error).message); }
+    try { setS(await call(`/api/sessions/${id}`, { action, text: t, question: s?.pending?.question })); setText(""); } catch (e) { setErr((e as Error).message); }
     setBusy(false);
   };
 
@@ -100,6 +105,7 @@ function Interview({ id }: { id: string }) {
   const stage = Math.min(s.stage, C);
   const avg = stageAvg(s, stage);
   const rem = remaining(s);
+  const backButton = s.qa.length > 0 && <button className="prev" disabled={busy} onClick={() => (!text.trim() || text === typed || window.confirm("적던 내용이 지워져요. 이전 질문으로 갈까요?")) && send("back")}>이전 질문</button>;
 
   return (
     <>
@@ -137,15 +143,16 @@ function Interview({ id }: { id: string }) {
         </section>
       )}
 
-      {s.status === "running" && <div className="status" role="status">Claude가 답을 살펴보고 다음 질문을 고르는 중…</div>}
+      {s.status === "running" && <div className="status" role="status">Claude가 답을 살펴보고 다음 질문을 고르는 중… {backButton}</div>}
 
       {s.status === "waiting" && s.pending && (
         <div className="card question">
+          {backButton}
           <div className="muted">{s.pending.header}</div>
           <p className="question-text">{s.pending.question}</p>
           {s.pending.options.map((o) => (
             <button key={o.label} className="option" disabled={busy} onClick={() => send("answer", o.label)}>
-              {o.label}<small>{o.description}</small>
+              {o.label}{o.label.trim() === previous && <span className="picked">전에 고른 답</span>}<small>{o.description}</small>
             </button>
           ))}
           <label htmlFor="free" className="muted" style={{ display: "block", marginTop: 16 }}>직접 적기</label>
@@ -166,6 +173,7 @@ function Interview({ id }: { id: string }) {
             <>
               <div className="row">
                 <button className="primary" disabled={busy} onClick={() => send("confirm")}>확정</button>
+                {backButton}
               </div>
               <label htmlFor="edit" className="muted" style={{ display: "block", marginTop: 20 }}>고칠 부분</label>
               <textarea id="edit" rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="예: 경계에 '결제 기능은 안 함'을 넣어 주세요" />

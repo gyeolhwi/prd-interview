@@ -9,7 +9,7 @@ test("answer() records the answer and shows the next prepared question right awa
   process.chdir(await mkdtemp(path.join(tmpdir(), "prd-")));
   // Pretend both background lanes are already live so answer()'s run() returns without calling Claude.
   (globalThis as unknown as { live?: Set<string> }).live = new Set(["s1:score", "s1:prep"]);
-  const { answer, load } = await import("./interview.ts"); // DATA is resolved from cwd at import
+  const { answer, back, confirm, load } = await import("./interview.ts"); // DATA is resolved from cwd at import
   const s: Session = {
     id: "s1", idea: "앱", createdAt: "2026-11-23T00:00:00Z", stage: 0, scores: {}, contradictions: [], unknown: [], qa: [],
     status: "waiting", pending: { stage: 0, target: "0.0", question: "누구?", header: "대상", options: [] },
@@ -29,4 +29,16 @@ test("answer() records the answer and shows the next prepared question right awa
   assert.equal(last.status, "running");
   assert.equal(last.pending, undefined);
   await assert.rejects(answer("s1", "단톡방"), /대기 중인 질문이 없습니다/); // a second click is rejected, not recorded twice
+
+  await back("s1");
+  const undone = await load("s1");
+  assert.deepEqual([undone.status, undone.pending?.question, undone.qa.length], ["waiting", "지금은?", 1]);
+  await assert.rejects(answer("s1", "카페", "누구?"), /질문이 바뀌었어요/); // answer to a question no longer on screen
+  await writeFile("data/s1/session.json", JSON.stringify({ ...undone, prepared: { ...undone.prepared, 1: [] } }));
+  await answer("s1", "카페", "지금은?");
+  const changed = await load("s1");
+  assert.deepEqual([changed.rev, changed.prepared?.[1]], [2, undefined]); // changed answer: later questions are remade
+  await writeFile("data/s1/session.json", JSON.stringify({ ...changed, status: "preview" }));
+  await confirm("s1");
+  await assert.rejects(back("s1"), /돌아갈 수 없습니다/); // a confirmed document stays as it is
 });

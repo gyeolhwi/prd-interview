@@ -3,7 +3,7 @@ import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  LOW, MAX_CONFIRM_Q, PASS, UNKNOWN, confirmOf, confirmScores, itemText, key, nextTarget, serve, stagesOf, toMarkdown,
+  LOW, MAX_CONFIRM_Q, PASS, UNKNOWN, back as undo, confirmOf, confirmScores, itemText, key, nextTarget, serve, stagesOf, toMarkdown,
   type DocParts, type Kind, type Pending, type Session,
 } from "./engine.ts";
 
@@ -66,12 +66,22 @@ export async function get(id: string) {
   return s;
 }
 
-export async function answer(id: string, text: string) {
+export async function answer(id: string, text: string, question?: string) {
   // Show the next prepared question right away; scoring and preparing continue in run().
   await update(id, (s) => {
     if (!s.pending) throw new Error("대기 중인 질문이 없습니다");
+    if (question !== undefined && question !== s.pending.question) throw new Error("화면의 질문이 바뀌었어요. 지금 질문에 다시 답해 주세요");
     record(s, text);
     serve(s);
+  });
+  run(id);
+}
+
+/** Return to the previous question; scoring restarts from the answers that are left. */
+export async function back(id: string) {
+  await update(id, (s) => {
+    if (!active(s) && s.status !== "preview") throw new Error("지금은 이전 질문으로 돌아갈 수 없습니다");
+    undo(s);
   });
   run(id);
 }
@@ -79,6 +89,13 @@ export async function answer(id: string, text: string) {
 function record(s: Session, text: string) {
   const p = s.pending!;
   s.qa.push({ stage: p.stage ?? s.stage, target: p.target, question: p.question, answer: text });
+  const old = s.undone?.[p.question];
+  if (old !== undefined && old !== text) {
+    // Later questions were written from the old answer.
+    // shortcut: extra questions added to the same stage stay, mark them when they turn out to mislead
+    for (const k of Object.keys(s.prepared ?? {}).map(Number)) if (k > (p.stage ?? s.stage)) delete s.prepared![k];
+    s.rev = (s.rev ?? 0) + 1;
+  }
   if (text.trim() === UNKNOWN) s.unknown.push(p.target);
   s.pending = undefined;
 }
@@ -90,12 +107,22 @@ function run(id: string) {
 }
 
 async function lane(id: string, name: string, step: (id: string) => Promise<boolean>) {
+  const rev = async () => (await load(id)).rev ?? 0;
   const k = `${id}:${name}`;
   wake.add(k);
   if (live.has(k)) return; // the running loop sees the wake flag and goes around once more
   live.add(k);
   try {
-    while (wake.delete(k)) while (await step(id)) run(id); // progress in one lane may unblock the other
+    while (wake.delete(k)) {
+      for (let more = true; more;) {
+        const at = await rev();
+        more = await step(id).catch(async (e) => {
+          if ((await rev()) === at) throw e;
+          return true; // failed on an answer that was taken back: start over from the current ones
+        });
+        if (more) run(id); // progress in one lane may unblock the other
+      }
+    }
   } catch (e) {
     await update(id, (s) => { s.status = "error"; s.error = String(e instanceof Error ? e.message : e); });
   } finally {
@@ -105,8 +132,10 @@ async function lane(id: string, name: string, step: (id: string) => Promise<bool
 
 const active = (s: Session) => s.status === "running" || s.status === "waiting";
 // After 확인 the scoring prompt no longer changes with the stage, so stage 6 reuses stage 5's scores.
-const scoreKey = (s: Session) => `${s.qa.length}:${Math.min(s.stage, confirmOf(s))}`;
+const scoreKey = (s: Session) => `${s.rev ?? 0}:${s.qa.length}:${Math.min(s.stage, confirmOf(s))}`;
 const fresh = (s: Session) => s.scoredAt === scoreKey(s);
+/** Save a background result unless the user went back while it was being made. */
+const updateSame = (s: Session, fn: (x: Session) => void) => update(s.id, (x) => { if ((x.rev ?? 0) === (s.rev ?? 0)) fn(x); });
 
 /** Score lane: keep scores current, advance finished stages, write the doc at the end. Claude calls run on a snapshot outside the save queue. */
 async function scoreStep(id: string): Promise<boolean> {
@@ -115,14 +144,15 @@ async function scoreStep(id: string): Promise<boolean> {
   if (!fresh(s)) {
     const at = scoreKey(s);
     const r = await score(s);
-    await update(id, (x) => { applyScores(x, r); x.scoredAt = at; });
+    await updateSame(s, (x) => { applyScores(x, r); x.scoredAt = at; });
     return true;
   }
-  if (s.stage <= confirmOf(s) && nextTarget(s) === null) {
-    await update(id, (x) => { if (x.stage === s.stage) { x.stage++; serve(x); } });
+  const returned = s.pending && s.undone?.[s.pending.question] !== undefined; // being re-answered: its stage is not over
+  if (s.stage <= confirmOf(s) && !returned && nextTarget(s) === null) {
+    await updateSame(s, (x) => { if (x.stage === s.stage) { x.stage++; serve(x); } });
     return true;
   }
-  if (s.stage > confirmOf(s) && s.doc && !s.pending) await update(id, (x) => { x.status = "preview"; }); // doc comes from the prep lane
+  if (s.stage > confirmOf(s) && s.doc && !s.pending) await updateSame(s, (x) => { x.status = "preview"; }); // doc comes from the prep lane
   return false;
 }
 
@@ -134,14 +164,14 @@ async function prepStep(id: string): Promise<boolean> {
   if (s.stage > C) { // the doc needs only the transcript, so it is written while the last scoring runs
     if (s.pending || s.doc) return false; // a question still on screen is answered first; answer() wakes the lanes again
     const doc = await writeDoc(s);
-    await update(id, (x) => { x.doc = doc; });
+    await updateSame(s, (x) => { x.doc = doc; });
     return true;
   }
   if (!s.pending && s.prepared?.[s.stage]) {
     const x = await update(id, serve);
     if (x.pending) return true;
   }
-  const add = (stage: number, qs: Pending[]) => update(id, (x) => { (x.prepared ??= {})[stage] ??= qs; serve(x); });
+  const add = (stage: number, qs: Pending[]) => updateSame(s, (x) => { (x.prepared ??= {})[stage] ??= qs; serve(x); });
   if (s.stage < C && !s.prepared?.[s.stage]) return add(s.stage, await prepare(s, s.stage)).then(() => true);
   if (s.stage + 1 < C && !s.prepared?.[s.stage + 1]) return add(s.stage + 1, await prepare(s, s.stage + 1)).then(() => true);
   if (s.stage === C - 1 && !s.prepared?.[C]) { // 확인 ahead of time: provisional contradiction check on the answers so far
@@ -154,7 +184,7 @@ async function prepStep(id: string): Promise<boolean> {
   if (s.stage === C && !s.prepared?.[C] && fresh(s)) return add(C, await prepare(s, C)).then(() => true);
   if (!s.pending && fresh(s) && nextTarget(s)) { // prepared ran out but the stage is still open: one more about the weakest item
     const qs = await prepare(s, s.stage, [nextTarget(s)!], 1);
-    await update(id, (x) => { x.prepared![s.stage].push(...qs); serve(x); });
+    await updateSame(s, (x) => { x.prepared![s.stage].push(...qs); serve(x); });
     return true;
   }
   return false;
@@ -323,16 +353,18 @@ export const preview = (s: Session) => (s.doc ? toMarkdown(s, s.doc, s.status ==
 export async function revise(id: string, edit: string) {
   const s = await load(id);
   if (s.status !== "preview") throw new Error("미리보기 단계가 아닙니다");
-  s.doc = await writeDoc(s, edit);
-  await save(s);
-  return s;
+  const doc = await writeDoc(s, edit);
+  return update(id, (x) => {
+    if (x.status !== "preview" || (x.rev ?? 0) !== (s.rev ?? 0)) throw new Error("그사이 문서가 바뀌어 수정을 반영하지 못했어요");
+    x.doc = doc;
+  });
 }
 
 export async function confirm(id: string) {
-  const s = await load(id);
-  if (s.status !== "preview") throw new Error("미리보기 단계가 아닙니다");
-  s.status = "done";
-  await save(s);
+  const s = await update(id, (x) => {
+    if (x.status !== "preview") throw new Error("미리보기 단계가 아닙니다");
+    x.status = "done";
+  });
   await writeFile(file(id, "pre-prd.md"), preview(s));
   return s;
 }
