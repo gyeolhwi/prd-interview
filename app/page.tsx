@@ -80,6 +80,7 @@ function Interview({ id }: { id: string }) {
   const [err, setErr] = useState("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pressed, setPressed] = useState(""); // which answer button is being sent
 
   const refresh = useCallback(() => call(`/api/sessions/${id}`).then(setS).catch((e) => setErr(e.message)), [id]);
   useEffect(() => { refresh(); }, [refresh]);
@@ -94,10 +95,10 @@ function Interview({ id }: { id: string }) {
   const typed = previous && !asked.options.some((o) => o.label.trim() === previous) ? previous : undefined;
   useEffect(() => { if (typed) setText(typed); }, [asked?.question, typed]);
 
-  const send = async (action: string, t?: string) => {
-    setBusy(true); setErr("");
+  const send = async (action: string, t?: string, from = "") => {
+    setBusy(true); setPressed(from); setErr("");
     try { setS(await call(`/api/sessions/${id}`, { action, text: t, question: s?.pending?.question })); setText(""); } catch (e) { setErr((e as Error).message); }
-    setBusy(false);
+    setBusy(false); setPressed("");
   };
 
   if (!s) return <p className="muted">{err || "불러오는 중…"}</p>;
@@ -143,7 +144,7 @@ function Interview({ id }: { id: string }) {
         </section>
       )}
 
-      {s.status === "running" && <div className="status" role="status">Claude가 답을 살펴보고 다음 질문을 고르는 중… {backButton}</div>}
+      {s.status === "running" && <div className="status" role="status"><span className="spinner" aria-hidden="true" />Claude가 답을 살펴보고 다음 질문을 고르는 중… {backButton}</div>}
 
       {s.status === "waiting" && s.pending && (
         <div className="card question">
@@ -151,17 +152,18 @@ function Interview({ id }: { id: string }) {
           <div className="muted">{s.pending.header}</div>
           <p className="question-text">{s.pending.question}</p>
           {s.pending.options.map((o) => (
-            <button key={o.label} className="option" disabled={busy} onClick={() => send("answer", o.label)}>
+            <button key={o.label} className="option" disabled={busy} aria-busy={pressed === `option:${o.label}`} onClick={() => send("answer", o.label, `option:${o.label}`)}>
               {o.label}{o.label.trim() === previous && <span className="picked">전에 고른 답</span>}<small>{o.description}</small>
             </button>
           ))}
           <label htmlFor="free" className="muted" style={{ display: "block", marginTop: 16 }}>직접 적기</label>
           <div className="row">
             <input id="free" type="text" value={text} onChange={(e) => setText(e.target.value)} style={{ flex: 1 }}
-              onKeyDown={(e) => e.key === "Enter" && text.trim() && !e.nativeEvent.isComposing && send("answer", text)} />
-            <button className="primary" disabled={busy || !text.trim()} onClick={() => send("answer", text)}>보내기</button>
-            <button disabled={busy} onClick={() => send("answer", UNKNOWN)} title="이 질문은 남은 질문으로 넘겨요">넘기기</button>
+              onKeyDown={(e) => e.key === "Enter" && text.trim() && !e.nativeEvent.isComposing && send("answer", text, "send")} />
+            <button className="primary" disabled={busy || !text.trim()} aria-busy={pressed === "send"} onClick={() => send("answer", text, "send")}>보내기</button>
+            <button disabled={busy} aria-busy={pressed === "skip"} onClick={() => send("answer", UNKNOWN, "skip")} title="이 질문은 남은 질문으로 넘겨요">넘기기</button>
           </div>
+          <span role="status" className="sr-only">{pressed && "답을 보내는 중…"}</span>
         </div>
       )}
 
