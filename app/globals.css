@@ -90,6 +90,16 @@ a { color: var(--ink); text-decoration-color: var(--rule); text-underline-offset
 a:hover { text-decoration-color: var(--ink); }
 .back { display: inline-block; margin-bottom: 24px; font-size: .9375rem; }
 
+/* 로딩: 누른 곳에만 작은 고리. 금방 끝나는 전송에서는 깜빡이지 않게 조금 늦게 나타난다 */
+.spinner, button[aria-busy=true]::after { content: ""; display: inline-block; width: 14px; height: 14px; margin-left: 8px; vertical-align: -2px; border: 2px solid; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite, appear .15s .15s backwards; }
+.spinner { margin: 0 8px 0 0; }
+button[aria-busy=true]:disabled { opacity: 1; }
+.option[aria-busy=true] { position: relative; padding-right: 48px; background: var(--marker-soft); border-color: var(--marker); }
+.option[aria-busy=true]::after { position: absolute; right: 20px; top: calc(50% - 7px); }
+@keyframes spin { to { transform: rotate(1turn); } }
+@keyframes appear { from { opacity: 0; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 @media (max-width: 480px) {
   main { padding-top: 28px; }
   h1 { font-size: 1.5rem; }
@@ -99,7 +109,7 @@ a:hover { text-decoration-color: var(--ink); }
   .composer textarea { min-height: 140px; padding: 16px 16px 6px; font-size: 1.0625rem; }
   .composer-foot { padding-left: 16px; }
 }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { *, *::after { transition: none !important; animation: none !important; } }
 
 .prev { padding: 6px 14px; font-size: .9375rem; }
 .question > .prev { display: block; margin: 0 0 16px; }
