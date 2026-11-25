@@ -85,7 +85,25 @@ textarea:focus-visible, input[type=text]:focus-visible { outline: none; } /* 자
 
 ul { padding-left: 1.2em; }
 li::marker { color: var(--graphite); }
-pre.md { white-space: pre-wrap; font: inherit; font-size: .9375rem; line-height: 1.75; background: var(--well); padding: 22px; border-radius: 14px; margin: 16px 0; }
+/* Pre-PRD 문서: 카드 시트 위에 바로 놓아 읽는 문서처럼 보이게 한다 */
+.copy { padding: 6px 14px; font-size: .9375rem; }
+.md { line-height: 1.75; margin: 20px 0; padding-top: 24px; border-top: 1.5px solid var(--rule); }
+.md h3 { font-size: 1.5rem; line-height: 1.4; letter-spacing: -0.02em; margin: 0 0 16px; }
+.md h4 { font-size: 1.125rem; margin: 36px 0 8px; }
+.md h5, .md h6 { font-size: 1rem; margin: 20px 0 4px; }
+.md p, .md ul, .md ol { margin: 8px 0; }
+.md p { white-space: pre-line; }
+.md img { max-width: 100%; }
+.md ul, .md ol { padding-left: 1.4em; }
+.md li { margin: 4px 0; }
+.md blockquote { margin: 12px 0; padding: 2px 18px; border-left: 4px solid var(--marker); color: var(--graphite); }
+.md code { padding: 1px 6px; border-radius: 6px; background: var(--well); font-size: .9em; }
+.md pre { padding: 14px 16px; border-radius: 14px; background: var(--well); overflow-x: auto; }
+.md pre code { padding: 0; }
+.md .table { overflow-x: auto; margin: 12px 0; }
+.md table { width: 100%; border-collapse: collapse; font-size: .9375rem; line-height: 1.6; }
+.md th, .md td { min-width: 4em; padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rule); }
+.md th { background: var(--well); font-weight: 500; white-space: nowrap; }
 a { color: var(--ink); text-decoration-color: var(--rule); text-underline-offset: 3px; text-decoration-thickness: 2px; }
 a:hover { text-decoration-color: var(--ink); }
 .back { display: inline-block; margin-bottom: 24px; font-size: .9375rem; }

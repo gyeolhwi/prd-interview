@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { KIND_LABEL, PASS, UNKNOWN, confirmOf, key, remaining, stageAvg, stagesOf, type Kind, type Session } from "@/lib/engine.ts";
 
 type View = Session & { markdown: string };
@@ -171,7 +173,7 @@ function Interview({ id }: { id: string }) {
       {(s.status === "preview" || s.status === "done") && (
         <div className="card question">
           <h2>{s.status === "done" ? `확정했어요. data/${s.id}/pre-prd.md 에 저장돼 있어요` : "Pre-PRD 미리보기"}</h2>
-          <pre className="md">{s.markdown}</pre>
+          <Document markdown={s.markdown} />
           {s.status === "preview" && (
             <>
               <div className="row">
@@ -195,6 +197,36 @@ function Interview({ id }: { id: string }) {
           <ul>{rem.map((r) => <li key={r} className="muted">{r}</li>)}</ul>
         </section>
       )}
+    </>
+  );
+}
+
+// The document sits under the page's h1 and the card's h2; wide tables scroll inside their own box.
+const DOC_PARTS: Components = {
+  a: ({ node: _, ...p }) => <a {...p} target="_blank" rel="noreferrer" />, // keep unsent edits on this page
+  h1: "h3", h2: "h4", h3: "h5", h4: "h6", h5: "h6",
+  table: ({ node: _, ...p }) => <div className="table" tabIndex={0} role="group" aria-label="표"><table {...p} /></div>,
+};
+
+function Document({ markdown }: { markdown: string }) {
+  const [note, setNote] = useState("");
+  const copy = async () => {
+    setNote("");
+    try { await navigator.clipboard.writeText(markdown); setNote("복사했어요"); } catch { setNote("복사하지 못했어요. 다시 눌러 주세요"); }
+  };
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(""), 3000);
+    return () => clearTimeout(t);
+  }, [note]);
+  return (
+    <>
+      <div className="row">
+        <button className="copy" onClick={copy}>Markdown 복사</button>
+        <span role="status" className="muted">{note}</span>
+      </div>
+      {/* singleTilde off: "3~5명이 10~20분" is a range, not strikethrough */}
+      <div className="md"><Markdown remarkPlugins={[[remarkGfm, { singleTilde: false }]]} components={DOC_PARTS}>{markdown}</Markdown></div>
     </>
   );
 }
